@@ -232,3 +232,43 @@ class TestBestModelMatchFallback:
             {"value": "xiaomi/mimo-v2.5-pro", "text": "MiMo V2.5 Pro"},
         ])
         assert out["best"] == "xiaomi/mimo-v2.5-pro"
+
+
+class TestDidYouMeanToastAssembly:
+    """#3368 review: the 'did you mean' toast must interpolate the suggestion
+    correctly. model_did_you_mean is a t()-invoked template `(m) => ...${m}...`,
+    so cmdModel must pass the suggestion as an arg: t('model_did_you_mean', suggestion).
+    Calling t('model_did_you_mean') with no arg rendered the literal "undefined".
+    And no_model_match already ends with an opening quote, so cmdModel must close
+    with `${args}"`, not `"${args}"` (which doubled the quote)."""
+
+    @pytest.fixture(scope="class")
+    def commands_src(self):
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parents[1]
+        return (root / "static" / "commands.js").read_text(encoding="utf-8")
+
+    def test_toast_passes_suggestion_as_t_argument(self, commands_src):
+        assert "t('model_did_you_mean', suggestion)" in commands_src, (
+            "cmdModel must pass the suggestion into t() so the template fills in "
+            "the model name (otherwise it renders 'undefined')"
+        )
+
+    def test_toast_does_not_use_buggy_function_branch(self, commands_src):
+        # The old buggy form resolved t() with no arg then branched on typeof.
+        assert "const sg=t('model_did_you_mean');" not in commands_src
+        assert "typeof sg==='function'" not in commands_src
+
+    def test_no_model_match_quote_not_doubled(self, commands_src):
+        # no_model_match value already ends with an opening quote; the assembly
+        # must close it with args+" (not re-open with "${args}").
+        assert "t('no_model_match')+`${args}\"`" in commands_src
+        assert "t('no_model_match')+`\"${args}\"`" not in commands_src
+
+    def test_model_did_you_mean_is_arg_template_in_en_locale(self):
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parents[1]
+        i18n = (root / "static" / "i18n.js").read_text(encoding="utf-8")
+        # The en template must accept and interpolate an argument.
+        assert "model_did_you_mean: (m) =>" in i18n
+        assert "${m}" in i18n[i18n.index("model_did_you_mean: (m) =>"):i18n.index("model_did_you_mean: (m) =>") + 120]

@@ -440,11 +440,13 @@ async function cmdModel(args){
     // #3368: when a complete versioned name (e.g. "mimo-v2.5") doesn't match
     // because only a longer tier variant exists ("mimo-v2.5-pro"), don't snap
     // to it — say no-match and suggest the near variant so the user can opt in.
-    let msg=t('no_model_match')+`"${args}"`;
+    // no_model_match already ends with an opening quote, so close it with args+".
+    let msg=t('no_model_match')+`${args}"`;
     const suggestion=_nearestModelSuggestion(sel.options,q);
     if(suggestion){
-      const sg=t('model_did_you_mean');
-      msg+=(typeof sg==='function')?sg(suggestion):(sg+suggestion);
+      // model_did_you_mean is a placeholder template; t() invokes it with the
+      // suggestion as its arg. (Calling t() without the arg renders "undefined".)
+      msg+=t('model_did_you_mean', suggestion);
     }
     showToast(msg);
     return;
