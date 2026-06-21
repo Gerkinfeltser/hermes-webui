@@ -677,7 +677,6 @@ def test_transparent_stream_renders_persisted_anchor_scene_after_reload():
     settled = _function_body(UI_JS, "_renderSettledAnchorSceneForMessage")
     transparent = _function_body(UI_JS, "_renderSettledAnchorSceneTransparentForMessage")
     row = _function_body(UI_JS, "_anchorSceneTransparentNodeForRow")
-    match = _function_body(UI_JS, "_anchorSceneProseMatchesFinalAnswer")
     render = _function_body(UI_JS, "renderMessages")
 
     assert "if(typeof isTransparentStream==='function'&&isTransparentStream())" in settled
