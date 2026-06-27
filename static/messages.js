@@ -96,7 +96,7 @@ function _markActiveSessionViewedOnReturn() {
 }
 
 function _chatPayloadModel(){
-  return S.session&&S.session.model||($('modelSelect')&&$('modelSelect').value)||'';
+  return S.session&&S.session.model||($('modelSelect')&&$('modelSelect').value)||window._defaultModel||'';
 }
 
 function _chatPayloadModelProvider(model){
@@ -1829,7 +1829,16 @@ function closeOtherLiveStreams(activeSid){
 }
 
 function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
-  if(!activeSid||!streamId) return;
+  if(!activeSid||!streamId) {
+    S.activeStreamId=null;
+    if(S.session&&S.session.session_id===activeSid) {
+      S.messages.push({role:'assistant', content:'**Error:** The agent session failed to start. No stream ID was received from the server. Check the server terminal for error details.'});
+      renderMessages();
+    }
+    removeThinking();
+    setBusy(false);
+    return;
+  }
   const reconnecting=!!options.reconnecting;
   // #4416: start (or, on reconnect for the SAME stream, keep) tracking whether
   // the tab was hidden during this stream so the done-notification fires for a
@@ -5095,6 +5104,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     });
 
     source.addEventListener('error',async e=>{
+      try {
       if(_bailOutOfTerminalEventsFromStaleStream(source) && !_streamFinalized){
         return;
       }
@@ -5156,6 +5166,9 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       _flushReasoningToAnchor();
       _scheduleAnchorRegistryCleanup(120000);
       _handleStreamError(source);
+      } finally {
+        _setActivePaneIdleIfOwner();
+      }
     });
 
     source.addEventListener('cancel',e=>{

@@ -898,6 +898,12 @@ async function newSession(flash, options={}){
     }else if(typeof _readPersistedModelState==='function'){
       newModelState=_readPersistedModelState();
     }
+    // Final safety net: if nothing resolved a model, use the global default
+    if(!newModelState||!newModelState.model) {
+      if(window._defaultModel) {
+        newModelState = {model: window._defaultModel, model_provider: null};
+      }
+    }
     if(newModelState&&newModelState.model){
       reqBody.model=newModelState.model;
       // Cold-start / picker-without-provider fallback: when the dropdown option's

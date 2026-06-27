@@ -5809,6 +5809,7 @@ def _run_agent_streaming(
     """
     q = STREAMS.get(stream_id)
     if q is None:
+        logger.warning("Stream %s not found in STREAMS — agent worker exiting without producing events", stream_id)
         return
     register_active_run(
         stream_id,
