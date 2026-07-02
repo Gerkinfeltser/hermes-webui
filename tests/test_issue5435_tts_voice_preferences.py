@@ -45,6 +45,24 @@ def post(path, body=None):
         return json.loads(exc.read()), exc.code
 
 
+def _extract_balanced_block(src, marker):
+    start = src.index(marker)
+    brace = src.index("{", start)
+    depth = 0
+    end = None
+    for idx in range(brace, len(src)):
+        ch = src[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = idx + 1
+                break
+    assert end is not None, f"Unbalanced block for {marker!r}"
+    return src[start:end]
+
+
 def _reset_speech_settings(extra=None):
     payload = dict(SPEECH_DEFAULTS)
     if extra:
@@ -151,8 +169,8 @@ def test_boot_mirrors_server_settings_before_tts_apply_and_preserves_failure_fal
     assert success_call_idx < apply_idx
     assert catch_idx < failure_apply_idx
     assert "const defaults={" in BOOT_JS
-    assert "cached!==null&&boolValue(server)===boolValue(defaults[settingKey])" in BOOT_JS
-    assert "String(server)===String(defaults[settingKey])" in BOOT_JS
+    assert "const hasServerValue=(settingKey)=>Object.prototype.hasOwnProperty.call(s,settingKey);" in BOOT_JS
+    assert "if(!hasServerValue(settingKey)&&cached!==null)" in BOOT_JS
     for storage_key in [
         "hermes-tts-enabled",
         "hermes-tts-auto-read",
@@ -167,6 +185,41 @@ def test_boot_mirrors_server_settings_before_tts_apply_and_preserves_failure_fal
     ]:
         assert storage_key in BOOT_JS
     assert "window._applyRawAudioModePreference" in BOOT_JS
+
+
+def test_server_saved_defaults_win_over_stale_local_cache_in_boot_and_panel_logic():
+    mirror_fn = _extract_balanced_block(BOOT_JS, "function _mirrorSpeechSettingsFromServer")
+    speech_setting_start = PANELS_JS.index("const _speechSetting=function(")
+    speech_setting_end = PANELS_JS.index("const _speechBool=function", speech_setting_start)
+    speech_setting_block = PANELS_JS[speech_setting_start:speech_setting_end].strip()
+    script = f"""
+const assert = require('assert');
+const localStorage = {{
+  store: new Map([
+    ['hermes-tts-enabled', 'true'],
+    ['hermes-tts-pitch', '0.8'],
+  ]),
+  getItem(key) {{
+    return this.store.has(key) ? this.store.get(key) : null;
+  }},
+  setItem(key, value) {{
+    this.store.set(key, String(value));
+  }},
+}};
+const window = {{}};
+{mirror_fn}
+_mirrorSpeechSettingsFromServer({{tts_enabled: false, tts_pitch: 1}});
+assert.strictEqual(localStorage.getItem('hermes-tts-enabled'), 'false');
+assert.strictEqual(localStorage.getItem('hermes-tts-pitch'), '1');
+let settings = {{tts_enabled: false, tts_pitch: 1}};
+{speech_setting_block}
+assert.strictEqual(_speechSetting('tts_enabled', 'hermes-tts-enabled', false, 'bool'), false);
+assert.strictEqual(_speechSetting('tts_pitch', 'hermes-tts-pitch', 1), 1);
+"""
+
+    import subprocess
+
+    subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
 
 
 def test_settings_panel_persists_speech_fields_and_keeps_immediate_cache_writes():
@@ -197,8 +250,7 @@ def test_settings_panel_persists_speech_fields_and_keeps_immediate_cache_writes(
     assert "savedPitch||'1'" not in panel_block
     assert "ttsRateSlider.value=(savedRate===null||savedRate===undefined)?'1':String(savedRate)" in panel_block
     assert "ttsPitchSlider.value=(savedPitch===null||savedPitch===undefined)?'1':String(savedPitch)" in panel_block
-    assert "serverBool===fallbackBool&&storedBool!==fallbackBool" in PANELS_JS
-    assert "String(server)===String(fallback)&&String(stored)!==String(fallback)" in PANELS_JS
+    assert "if(settings&&Object.prototype.hasOwnProperty.call(settings,key)) return settings[key];" in PANELS_JS
     assert "_schedulePreferencesAutosave()" in panel_block
     assert "_applyVoiceModePref" in panel_block
     assert "_populateTtsVoices" in panel_block

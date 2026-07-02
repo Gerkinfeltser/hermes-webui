@@ -8640,20 +8640,7 @@ async function loadSettingsPanel(){
     if(typeof window._mirrorSpeechSettingsFromServer==='function') window._mirrorSpeechSettingsFromServer(settings);
     const _speechSetting=function(key,storageKey,fallback,kind){
       const stored=localStorage.getItem(storageKey);
-      if(settings&&Object.prototype.hasOwnProperty.call(settings,key)){
-        const server=settings[key];
-        if(stored!==null){
-          if(kind==='bool'){
-            const serverBool=server===true||server==='true';
-            const fallbackBool=fallback===true||fallback==='true';
-            const storedBool=stored==='true';
-            if(serverBool===fallbackBool&&storedBool!==fallbackBool) return storedBool;
-          }else if(String(server)===String(fallback)&&String(stored)!==String(fallback)){
-            return stored;
-          }
-        }
-        return server;
-      }
+      if(settings&&Object.prototype.hasOwnProperty.call(settings,key)) return settings[key];
       return stored===null?fallback:stored;
     };
     const _speechBool=function(key,storageKey,fallback){

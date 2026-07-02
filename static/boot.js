@@ -2744,22 +2744,23 @@ function _mirrorSpeechSettingsFromServer(s){
     voice_silence_ms:1800,
     raw_audio_mode:false,
   };
+  const hasServerValue=(settingKey)=>Object.prototype.hasOwnProperty.call(s,settingKey);
   const cachedValue=(storageKey)=>{
     try{return localStorage.getItem(storageKey);}catch(_){return null;}
   };
   const boolValue=(value)=>value===true||value==='true';
   const resolveBool=(settingKey,storageKey)=>{
-    const server=Object.prototype.hasOwnProperty.call(s,settingKey)?s[settingKey]:defaults[settingKey];
+    const server=hasServerValue(settingKey)?s[settingKey]:defaults[settingKey];
     const cached=cachedValue(storageKey);
-    if(cached!==null&&boolValue(server)===boolValue(defaults[settingKey])&&boolValue(cached)!==boolValue(defaults[settingKey])){
+    if(!hasServerValue(settingKey)&&cached!==null){
       return boolValue(cached);
     }
     return boolValue(server);
   };
   const resolveScalar=(settingKey,storageKey)=>{
-    const server=Object.prototype.hasOwnProperty.call(s,settingKey)?s[settingKey]:defaults[settingKey];
+    const server=hasServerValue(settingKey)?s[settingKey]:defaults[settingKey];
     const cached=cachedValue(storageKey);
-    if(cached!==null&&String(server)===String(defaults[settingKey])&&String(cached)!==String(defaults[settingKey])){
+    if(!hasServerValue(settingKey)&&cached!==null){
       return cached;
     }
     return server;
@@ -2771,7 +2772,7 @@ function _mirrorSpeechSettingsFromServer(s){
     ['voice_continuous','hermes-voice-continuous'],
   ];
   boolKeys.forEach(([settingKey,storageKey])=>{
-    if(Object.prototype.hasOwnProperty.call(s,settingKey)){
+    if(hasServerValue(settingKey)){
       try{localStorage.setItem(storageKey,resolveBool(settingKey,storageKey)?'true':'false');}catch(_){}
     }
   });
@@ -2782,11 +2783,11 @@ function _mirrorSpeechSettingsFromServer(s){
     ['tts_pitch','hermes-tts-pitch'],
     ['voice_silence_ms','hermes-voice-silence-ms'],
   ].forEach(([settingKey,storageKey])=>{
-    if(Object.prototype.hasOwnProperty.call(s,settingKey)){
+    if(hasServerValue(settingKey)){
       try{localStorage.setItem(storageKey,String(resolveScalar(settingKey,storageKey)));}catch(_){}
     }
   });
-  if(Object.prototype.hasOwnProperty.call(s,'raw_audio_mode')){
+  if(hasServerValue('raw_audio_mode')){
     const rawAudioMode=resolveBool('raw_audio_mode','hermes-raw-audio-mode');
     if(typeof window._applyRawAudioModePreference==='function'){
       window._applyRawAudioModePreference(rawAudioMode);
