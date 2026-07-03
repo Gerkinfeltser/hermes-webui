@@ -458,9 +458,15 @@ def read_importable_agent_session_rows(
     # the agent streams into it adds needless checkpoint/lock surface (#5455).
     # The defensive index self-heal below still runs, but through a separate
     # short-lived writable connection on the rare missing-index path only.
+    read_only_uri = f"{db_path.resolve().as_uri()}?mode=ro"
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    except sqlite3.Error:
+        conn = sqlite3.connect(read_only_uri, uri=True)
+    except sqlite3.Error as exc:
+        log.warning(
+            "agent session listing read-only open failed for %s; falling back to writable connection: %s",
+            db_path,
+            exc,
+        )
         conn = sqlite3.connect(str(db_path))
     with closing(conn):
         conn.row_factory = sqlite3.Row

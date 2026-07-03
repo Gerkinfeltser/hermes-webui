@@ -12,6 +12,7 @@ writable connection. With the index present (the normal case) the read path
 performs zero writes; when the index is missing the self-heal still runs and
 rows still come back.
 """
+import logging
 import sqlite3
 
 import api.agent_sessions as agent_sessions
@@ -71,6 +72,44 @@ def test_listing_opens_read_only_and_returns_rows(tmp_path, monkeypatch):
     assert calls, "expected at least one sqlite connection"
     assert calls[0]["uri"] is True
     assert "mode=ro" in calls[0]["target"]
+
+
+def test_listing_read_only_uri_encodes_special_path_chars(tmp_path, monkeypatch):
+    db_dir = tmp_path / "state dir #1"
+    db_dir.mkdir()
+    db = db_dir / "state?.db"
+    _make_db(db, with_index=True)
+    calls = _record_connects(monkeypatch)
+
+    out = read_importable_agent_session_rows(db, exclude_sources=None)
+
+    assert "cli-1" in {r["id"] for r in out}
+    assert calls[0]["uri"] is True
+    assert calls[0]["target"].startswith("file://")
+    assert "%20" in calls[0]["target"]
+    assert "%23" in calls[0]["target"]
+    assert "%3F" in calls[0]["target"]
+    assert calls[0]["target"].endswith("?mode=ro")
+
+
+def test_read_only_open_fallback_is_logged(tmp_path, monkeypatch, caplog):
+    db = tmp_path / "state.db"
+    _make_db(db, with_index=True)
+    real_connect = sqlite3.connect
+
+    def fail_read_only(target, *args, **kwargs):
+        if kwargs.get("uri"):
+            raise sqlite3.OperationalError("synthetic read-only URI failure")
+        return real_connect(target, *args, **kwargs)
+
+    monkeypatch.setattr(agent_sessions.sqlite3, "connect", fail_read_only)
+
+    with caplog.at_level(logging.WARNING, logger="api.agent_sessions"):
+        out = read_importable_agent_session_rows(db, exclude_sources=None)
+
+    assert "cli-1" in {r["id"] for r in out}
+    assert "read-only open failed" in caplog.text
+    assert "synthetic read-only URI failure" in caplog.text
 
 
 def test_index_present_performs_no_writable_connection(tmp_path, monkeypatch):
