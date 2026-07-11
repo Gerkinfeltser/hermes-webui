@@ -1552,6 +1552,20 @@ async function send(){
   const activeSid=S.session.session_id;
   _sendInProgressSid=activeSid;
 
+  // Salvage of #4750 (@harryazj): capture the composer text and clear the
+  // textarea NOW — immediately after capture and BEFORE the uploadPendingFiles()
+  // / forced-skill-directive awaits below. send() re-reads the LIVE composer when
+  // it is re-entered while a send is in flight (the _sendInProgress guard at the
+  // top of this function reads _composerTextWithPendingSelections()). If we
+  // cleared only after the async work — as the pre-fix code did, down at the
+  // _clearComposerDraft site — a re-entrant/interrupt-mode send during the upload
+  // window would read the still-populated DOM and double-submit the same message.
+  // _submittedDraftTextForClear is the sole authority for the send-time draft
+  // signature from here down; no code path below re-reads $('msg').value on the
+  // happy path.
+  const _submittedDraftTextForClear=$('msg').value||'';
+  $('msg').value='';autoResize();
+
   setComposerStatus(S.pendingFiles&&S.pendingFiles.length?'Uploading…':'');
   let uploaded=[];
   try{uploaded=await uploadPendingFiles();}
@@ -1589,9 +1603,10 @@ async function send(){
     }
   }
   if(!msgText){setComposerStatus('Nothing to send');return;}
-  const _submittedDraftTextForClear=$('msg').value||'';
+  // Composer textarea + _submittedDraftTextForClear were already captured and
+  // cleared immediately after capture (above, salvage of #4750) to close the
+  // re-entrant double-send race. Only the files snapshot is finalized here.
   const _submittedDraftFilesForClear=Array.isArray(_failedSendFilesSnapshot)?[..._failedSendFilesSnapshot]:[];
-  $('msg').value='';autoResize();
   // Clear persisted composer draft since message was sent. Capture the promise
   // so the #5472 failed-send restore can chain its re-persist AFTER this clear
   // resolves — otherwise the two same-origin POSTs (clear text:'' then restore

@@ -93,23 +93,46 @@ def test_error_branch_restores_original_snapshot_not_mutated_payload():
 
 
 def test_send_still_clears_composer_on_the_happy_path():
-    # Anchor to the MAIN-path clear specifically (the send-time composer wipe +
-    # persisted-draft clear), not a bare `$('msg').value=''` string that also
-    # appears at ~13 other sites (slash returns, bundle-error paths). This
-    # assertion must actually guard the main send path's clear. (Opus #5484 NIT.)
+    # Anchor to the MAIN-path persisted-draft clear specifically (not a bare
+    # `$('msg').value=''` string that also appears at ~13 other sites — slash
+    # returns, bundle-error paths). This assertion must actually guard the main
+    # send path's clear.
     main_clear = (
         "if (activeSid && typeof _clearComposerDraft === 'function') "
         "_composerDraftClearPromise=_clearComposerDraft(activeSid,_submittedDraftTextForClear,_submittedDraftFilesForClear);"
     )
     assert main_clear in MESSAGES_JS, "main send path must clear the persisted draft at send time"
-    # The composer textarea wipe must sit immediately above that clear.
-    clear_idx = MESSAGES_JS.find(main_clear)
-    window_before = MESSAGES_JS[clear_idx - 700:clear_idx]
-    assert "const _submittedDraftTextForClear=$('msg').value||'';" in window_before
-    assert "const _submittedDraftFilesForClear=Array.isArray(_failedSendFilesSnapshot)?[..._failedSendFilesSnapshot]:[];" in window_before
-    assert "$('msg').value='';autoResize();" in window_before, (
-        "the main-path composer wipe must precede the persisted-draft clear"
+
+    # Salvage of #4750: the composer textarea capture + wipe was moved UP to run
+    # immediately after capture (right after `_sendInProgressSid=activeSid;`) and
+    # BEFORE `uploadPendingFiles()` / the forced-skill-directive await — so a
+    # re-entrant/interrupt-mode send during the async window can't re-read the
+    # still-populated DOM and double-submit. Verify that ordering here.
+    capture = "const _submittedDraftTextForClear=$('msg').value||'';"
+    assert capture in MESSAGES_JS, "send() must still capture the send-time draft text"
+    capture_idx = MESSAGES_JS.index(capture)
+    # The textarea wipe sits immediately after the capture (same 120-char window).
+    window_after_capture = MESSAGES_JS[capture_idx : capture_idx + 120]
+    assert "$('msg').value='';autoResize();" in window_after_capture, (
+        "the composer textarea wipe must sit immediately after the capture"
     )
+    upload_idx = MESSAGES_JS.index("uploaded=await uploadPendingFiles();")
+    clear_idx = MESSAGES_JS.index(main_clear)
+    # THE FIX: capture+wipe happen before the upload await (closes the race)...
+    assert capture_idx < upload_idx, (
+        "composer must be captured+cleared BEFORE the uploadPendingFiles() await "
+        "so a re-entrant send can't re-read stale DOM text (salvage of #4750)"
+    )
+    # ...and the captured text is still what feeds the persisted-draft clear.
+    assert capture_idx < clear_idx, (
+        "the captured send-time draft text must precede the persisted-draft clear"
+    )
+    # The files snapshot is finalized just above the persisted-draft clear.
+    window_before_clear = MESSAGES_JS[clear_idx - 700:clear_idx]
+    assert (
+        "const _submittedDraftFilesForClear=Array.isArray(_failedSendFilesSnapshot)?[..._failedSendFilesSnapshot]:[];"
+        in window_before_clear
+    ), "the files snapshot for the persisted-draft clear must precede it"
 
 
 def test_restore_persist_chains_after_the_clear_promise():
