@@ -47,7 +47,7 @@ def test_session_db_helper_retries_transient_constructor_failure():
     fake_state.SessionDB = mock.Mock(
         side_effect=[
             sqlite3.OperationalError("database is locked"),
-            sqlite3.OperationalError("database is locked"),
+            sqlite3.OperationalError("database is busy"),
             created,
         ]
     )
@@ -93,6 +93,48 @@ def test_session_db_helper_returns_none_after_exhausted_retries():
         mock.call(db_path=state_db_path),
     ]
     assert sleep.call_args_list == [mock.call(0.05), mock.call(0.1)]
+
+
+def test_session_db_helper_does_not_retry_permanent_constructor_failure():
+    import api.streaming as streaming
+
+    state_db_path = Path("/tmp/profile/state.db")
+    permanent_error = TypeError("unsupported SessionDB argument")
+    fake_state = types.ModuleType("hermes_state")
+    fake_state.SessionDB = mock.Mock(side_effect=permanent_error)
+
+    with (
+        mock.patch.dict(sys.modules, {"hermes_state": fake_state}),
+        mock.patch.object(streaming, "random", mock.Mock(), create=True) as random,
+        mock.patch.object(streaming.time, "sleep") as sleep,
+    ):
+        db = streaming._build_session_db_for_stream(state_db_path)
+
+    assert db is None
+    fake_state.SessionDB.assert_called_once_with(db_path=state_db_path)
+    random.uniform.assert_not_called()
+    sleep.assert_not_called()
+
+
+def test_session_db_helper_does_not_retry_noncontention_operational_error():
+    import api.streaming as streaming
+
+    state_db_path = Path("/tmp/profile/state.db")
+    permanent_error = sqlite3.OperationalError("locking protocol")
+    fake_state = types.ModuleType("hermes_state")
+    fake_state.SessionDB = mock.Mock(side_effect=permanent_error)
+
+    with (
+        mock.patch.dict(sys.modules, {"hermes_state": fake_state}),
+        mock.patch.object(streaming, "random", mock.Mock(), create=True) as random,
+        mock.patch.object(streaming.time, "sleep") as sleep,
+    ):
+        db = streaming._build_session_db_for_stream(state_db_path)
+
+    assert db is None
+    fake_state.SessionDB.assert_called_once_with(db_path=state_db_path)
+    random.uniform.assert_not_called()
+    sleep.assert_not_called()
 
 
 def test_self_heal_session_db_handle_is_replaced_safely():
