@@ -1,0 +1,23 @@
+[Unit]
+Description=Hermes Agent WebUI
+After=network.target hermes-dashboard.service
+Wants=hermes-dashboard.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+Environment="HERMES_WEBUI_HOST=100.115.44.48"
+Environment="HERMES_WEBUI_PORT=8787"
+Environment="HERMES_WEBUI_PYTHON=/home/ubuntu/venv/bin/python3"
+Environment="HERMES_HOME=/home/ubuntu/.hermes"
+Environment="HERMES_WEBUI_STATE_DIR=/home/ubuntu/.hermes/webui"
+ExecStart=/home/ubuntu/venv/bin/python3 /home/ubuntu/hermes-webui/server.py
+WorkingDirectory=/home/ubuntu/hermes-webui
+User=ubuntu
+Group=ubuntu
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
